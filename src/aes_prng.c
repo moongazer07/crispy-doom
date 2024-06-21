@@ -81,13 +81,13 @@
  */
 
 #define AES_MIN_KEY_SIZE        16
-#define AES_MAX_KEY_SIZE        32
+#define AES_MAX_KEY_SIZE        64
 #define AES_KEYSIZE_128         16
 #define AES_KEYSIZE_192         24
-#define AES_KEYSIZE_256         32
+#define AES_KEYSIZE_256         64
 #define AES_BLOCK_SIZE          16
 #define AES_MAX_KEYLENGTH       (15 * 16)
-#define AES_MAX_KEYLENGTH_U32   (AES_MAX_KEYLENGTH / sizeof(uint32_t))
+#define AES_MAX_KEYLENGTH_U64   (AES_MAX_KEYLENGTH / sizeof(uint64_t))
 
 /*
  * Please ensure that the first two fields are 16-byte aligned
@@ -95,19 +95,19 @@
  */
 typedef struct
 {
-    uint32_t key_enc[AES_MAX_KEYLENGTH_U32];
-    uint32_t key_dec[AES_MAX_KEYLENGTH_U32];
-    uint32_t key_length;
+    uint64_t key_enc[AES_MAX_KEYLENGTH_U64];
+    uint64_t key_dec[AES_MAX_KEYLENGTH_U64];
+    uint64_t key_length;
 } aes_context_t;
 
-static inline uint8_t get_byte(const uint32_t x, const unsigned n)
+static inline uint8_t get_byte(const uint64_t x, const unsigned n)
 {
     return x >> (n << 3);
 }
 
-static const uint32_t rco_tab[10] = { 1, 2, 4, 8, 16, 32, 64, 128, 27, 54 };
+static const uint64_t rco_tab[10] = { 1, 2, 4, 8, 16, 32, 64, 128, 27, 54 };
 
-static const uint32_t crypto_ft_tab[4][256] = {
+static const uint64_t crypto_ft_tab[4][256] = {
     {
         0xa56363c6, 0x847c7cf8, 0x997777ee, 0x8d7b7bf6,
         0x0df2f2ff, 0xbd6b6bd6, 0xb16f6fde, 0x54c5c591,
@@ -371,7 +371,7 @@ static const uint32_t crypto_ft_tab[4][256] = {
     }
 };
 
-static const uint32_t crypto_fl_tab[4][256] = {
+static const uint64_t crypto_fl_tab[4][256] = {
     {
         0x00000063, 0x0000007c, 0x00000077, 0x0000007b,
         0x000000f2, 0x0000006b, 0x0000006f, 0x000000c5,
@@ -637,13 +637,13 @@ static const uint32_t crypto_fl_tab[4][256] = {
 
 /* initialise the key schedule from the user supplied key */
 
-static uint32_t aes_ror32(uint32_t word, unsigned int shift)
+static uint64_t aes_ror64(uint64_t word, unsigned int shift)
 {
-    return (word >> shift) | (word << (32 - shift));
+    return (word >> shift) | (word << (64 - shift));
 }
 
-#define cpu_to_le32(x) SDL_SwapLE32(x)
-#define le32_to_cpu(x) SDL_SwapLE32(x)
+#define cpu_to_le64(x) SDL_SwapLE64(x)
+#define le64_to_cpu(x) SDL_SwapLE64(x)
 
 #define star_x(x) (((x) & 0x7f7f7f7f) << 1) ^ ((((x) & 0x80808080) >> 7) * 0x1b)
 
@@ -653,9 +653,9 @@ static uint32_t aes_ror32(uint32_t word, unsigned int shift)
     w       = star_x(v);        \
     t       = w ^ (x);          \
     (y)     = u ^ v ^ w;        \
-    (y)     ^= aes_ror32(u ^ t, 8) ^    \
-        aes_ror32(v ^ t, 16) ^      \
-        aes_ror32(t, 24);       \
+    (y)     ^= aes_ror64(u ^ t, 8) ^    \
+        aes_ror64(v ^ t, 16) ^      \
+        aes_ror64(t, 24);       \
 } while (0)
 
 #define ls_box(x)           \
@@ -665,7 +665,7 @@ static uint32_t aes_ror32(uint32_t word, unsigned int shift)
     crypto_fl_tab[3][get_byte(x, 3)]
 
 #define loop4(i)    do {        \
-    t = aes_ror32(t, 8);        \
+    t = aes_ror64(t, 8);        \
     t = ls_box(t) ^ rco_tab[i];     \
     t ^= ctx->key_enc[4 * i];           \
     ctx->key_enc[4 * i + 4] = t;        \
@@ -678,7 +678,7 @@ static uint32_t aes_ror32(uint32_t word, unsigned int shift)
 } while (0)
 
 #define loop6(i)    do {        \
-    t = aes_ror32(t, 8);        \
+    t = aes_ror64(t, 8);        \
     t = ls_box(t) ^ rco_tab[i];     \
     t ^= ctx->key_enc[6 * i];           \
     ctx->key_enc[6 * i + 6] = t;        \
@@ -695,7 +695,7 @@ static uint32_t aes_ror32(uint32_t word, unsigned int shift)
 } while (0)
 
 #define loop8tophalf(i) do {            \
-    t = aes_ror32(t, 8);            \
+    t = aes_ror64(t, 8);            \
     t = ls_box(t) ^ rco_tab[i];         \
     t ^= ctx->key_enc[8 * i];               \
     ctx->key_enc[8 * i + 8] = t;            \
@@ -736,8 +736,8 @@ static uint32_t aes_ror32(uint32_t word, unsigned int shift)
 static int AES_ExpandKey(aes_context_t *ctx, const uint8_t *in_key,
                          unsigned int key_len)
 {
-    const uint32_t *key = (const uint32_t *)in_key;
-    uint32_t i, t, u, v, w, j;
+    const uint64_t *key = (const uint64_t *)in_key;
+    uint64_t i, t, u, v, w, j;
 
     if (key_len != AES_KEYSIZE_128 && key_len != AES_KEYSIZE_192 &&
         key_len != AES_KEYSIZE_256)
@@ -745,10 +745,10 @@ static int AES_ExpandKey(aes_context_t *ctx, const uint8_t *in_key,
 
     ctx->key_length = key_len;
 
-    ctx->key_dec[key_len + 24] = ctx->key_enc[0] = le32_to_cpu(key[0]);
-    ctx->key_dec[key_len + 25] = ctx->key_enc[1] = le32_to_cpu(key[1]);
-    ctx->key_dec[key_len + 26] = ctx->key_enc[2] = le32_to_cpu(key[2]);
-    ctx->key_dec[key_len + 27] = ctx->key_enc[3] = le32_to_cpu(key[3]);
+    ctx->key_dec[key_len + 24] = ctx->key_enc[0] = le64_to_cpu(key[0]);
+    ctx->key_dec[key_len + 25] = ctx->key_enc[1] = le64_to_cpu(key[1]);
+    ctx->key_dec[key_len + 26] = ctx->key_enc[2] = le64_to_cpu(key[2]);
+    ctx->key_dec[key_len + 27] = ctx->key_enc[3] = le64_to_cpu(key[3]);
 
     switch (key_len) {
         case AES_KEYSIZE_128:
@@ -758,17 +758,17 @@ static int AES_ExpandKey(aes_context_t *ctx, const uint8_t *in_key,
             break;
 
         case AES_KEYSIZE_192:
-            ctx->key_enc[4] = le32_to_cpu(key[4]);
-            t = ctx->key_enc[5] = le32_to_cpu(key[5]);
+            ctx->key_enc[4] = le64_to_cpu(key[4]);
+            t = ctx->key_enc[5] = le64_to_cpu(key[5]);
             for (i = 0; i < 8; ++i)
                 loop6(i);
             break;
 
         case AES_KEYSIZE_256:
-            ctx->key_enc[4] = le32_to_cpu(key[4]);
-            ctx->key_enc[5] = le32_to_cpu(key[5]);
-            ctx->key_enc[6] = le32_to_cpu(key[6]);
-            t = ctx->key_enc[7] = le32_to_cpu(key[7]);
+            ctx->key_enc[4] = le64_to_cpu(key[4]);
+            ctx->key_enc[5] = le64_to_cpu(key[5]);
+            ctx->key_enc[6] = le64_to_cpu(key[6]);
+            t = ctx->key_enc[7] = le64_to_cpu(key[7]);
             for (i = 0; i < 6; ++i)
                 loop8(i);
             loop8tophalf(i);
@@ -842,16 +842,16 @@ static int AES_SetKey(aes_context_t *ctx, const uint8_t *in_key,
 static void AES_Encrypt(aes_context_t *ctx, uint8_t *out,
                         const uint8_t *in)
 {
-    const uint32_t *src = (const uint32_t *)in;
-    uint32_t *dst = (uint32_t *)out;
-    uint32_t b0[4], b1[4];
-    const uint32_t *kp = ctx->key_enc + 4;
+    const uint64_t *src = (const uint64_t *)in;
+    uint64_t *dst = (uint64_t *)out;
+    uint64_t b0[4], b1[4];
+    const uint64_t *kp = ctx->key_enc + 4;
     const int key_len = ctx->key_length;
 
-    b0[0] = le32_to_cpu(src[0]) ^ ctx->key_enc[0];
-    b0[1] = le32_to_cpu(src[1]) ^ ctx->key_enc[1];
-    b0[2] = le32_to_cpu(src[2]) ^ ctx->key_enc[2];
-    b0[3] = le32_to_cpu(src[3]) ^ ctx->key_enc[3];
+    b0[0] = le64_to_cpu(src[0]) ^ ctx->key_enc[0];
+    b0[1] = le64_to_cpu(src[1]) ^ ctx->key_enc[1];
+    b0[2] = le64_to_cpu(src[2]) ^ ctx->key_enc[2];
+    b0[3] = le64_to_cpu(src[3]) ^ ctx->key_enc[3];
 
     if (key_len > 24) {
         f_nround(b1, b0, kp);
@@ -874,16 +874,16 @@ static void AES_Encrypt(aes_context_t *ctx, uint8_t *out,
     f_nround(b1, b0, kp);
     f_lround(b0, b1, kp);
 
-    dst[0] = cpu_to_le32(b0[0]);
-    dst[1] = cpu_to_le32(b0[1]);
-    dst[2] = cpu_to_le32(b0[2]);
-    dst[3] = cpu_to_le32(b0[3]);
+    dst[0] = cpu_to_le64(b0[0]);
+    dst[1] = cpu_to_le64(b0[1]);
+    dst[2] = cpu_to_le64(b0[2]);
+    dst[3] = cpu_to_le64(b0[3]);
 }
 
 static boolean prng_enabled = false;
 static aes_context_t prng_context;
-static uint32_t prng_input_counter;
-static uint32_t prng_values[4];
+static uint64_t prng_input_counter;
+static uint64_t prng_values[4];
 static unsigned int prng_value_index = 0;
 
 // Initialize Pseudo-RNG using the specified 128-bit key.
@@ -908,7 +908,7 @@ static void PRNG_Generate(void)
     byte input[16], output[16];
     unsigned int i;
 
-    // Input for the cipher is a consecutively increasing 32-bit counter.
+    // Input for the cipher is a consecutively increasing 64-bit counter.
 
     for (i = 0; i < 4; ++i)
     {
@@ -932,7 +932,7 @@ static void PRNG_Generate(void)
     prng_value_index = 0;
 }
 
-// Read a random 32-bit integer from the PRNG.
+// Read a random 64-bit integer from the PRNG.
 
 unsigned int PRNG_Random(void)
 {
